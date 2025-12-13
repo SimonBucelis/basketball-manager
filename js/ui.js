@@ -407,23 +407,71 @@ const UI = {
         return;
     }
 
-    const agents = window.league.freeAgents;
-    if (agents.length === 0) {
-        container.innerHTML = '<p style="color:#888;">No free agents currently available. The market will refresh next offseason.</p>';
-        return;
+    const userTeam = window.league.teams.find(t => t.id === window.league.userTeamId);
+    
+    // Youth Intake Section
+    const youthSection = document.createElement('div');
+    youthSection.style.cssText = 'margin-bottom: 30px; padding: 20px; background: rgba(0,230,118,0.1); border: 1px solid #00e676; border-radius: 8px;';
+    
+    const canClaimYouth = !window.league.didYouthThisOffseason && 
+                          userTeam.players.length + CONFIG.YOUTH_COUNT <= CONFIG.ROSTER_SIZE;
+    
+    youthSection.innerHTML = `
+      <h3 style="color: #00e676; margin: 0 0 10px 0;">🌟 Youth Intake</h3>
+      <p style="color: #a0a0a0; font-size: 0.9rem; margin: 0 0 15px 0;">
+        Sign 3 young players (ages 18-22) with 2-year contracts based on your team prestige.
+      </p>
+      ${canClaimYouth ? 
+        `<button class="btn btn-success" id="btnClaimYouthMarket">Claim Youth Players</button>` :
+        `<p style="color: #888; font-style: italic;">${window.league.didYouthThisOffseason ? 'Already claimed this offseason' : 'Not enough roster space'}</p>`
+      }
+    `;
+    container.appendChild(youthSection);
+    
+    // Bind youth button
+    const btnYouthMarket = document.getElementById('btnClaimYouthMarket');
+    if(btnYouthMarket) {
+      btnYouthMarket.addEventListener('click', () => {
+        if(userTeam.players.length + CONFIG.YOUTH_COUNT > CONFIG.ROSTER_SIZE) {
+          this.notify("Not enough roster space.", "error");
+          return;
+        }
+        
+        const youth = LeagueManager.doYouthIntake(window.league, window.league.userTeamId);
+        userTeam.players.push(...youth);
+        this.notify(`${CONFIG.YOUTH_COUNT} Youth Players Signed!`, "success");
+        this.updateAll();
+      });
     }
 
-    agents.forEach(p => {
-        const card = document.createElement('div');
-        card.className = 'player-card';
-        card.innerHTML = `
-           <h4>${p.name}</h4>
-           <div>Age: ${p.age}</div>
-           <div class="stars">${"★".repeat(p.potentialStars)}</div>
-           <div style="font-size:0.85rem; color:#888; margin-top:5px;">${p.role}</div>
-           <button class="btn btn-sm btn-outline btn-sign" data-id="${p.id}" style="margin-top:10px;">Sign</button>`;
-        container.appendChild(card);
-    });
+    // Free Agents Section Header
+    const faHeader = document.createElement('h3');
+    faHeader.textContent = '📋 Free Agents';
+    faHeader.style.cssText = 'margin: 0 0 20px 0;';
+    container.appendChild(faHeader);
+
+    // Free Agents Grid
+    const faGrid = document.createElement('div');
+    faGrid.className = 'card-grid';
+    
+    const agents = window.league.freeAgents;
+    if (agents.length === 0) {
+        faGrid.innerHTML = '<p style="color:#888;">No free agents currently available. The market will refresh next offseason.</p>';
+    } else {
+      agents.forEach(p => {
+          const card = document.createElement('div');
+          card.className = 'player-card';
+          card.innerHTML = `
+             <h4>${p.name}</h4>
+             <div>Age: ${p.age}</div>
+             <div class="stars">${"★".repeat(p.potentialStars)}</div>
+             <div style="font-size:0.85rem; color:#888; margin-top:5px;">${p.role}</div>
+             <button class="btn btn-sm btn-outline btn-sign" data-id="${p.id}" style="margin-top:10px;">Sign (2yr)</button>`;
+          faGrid.appendChild(card);
+      });
+    }
+    
+    container.appendChild(faGrid);
 
     document.querySelectorAll('.btn-sign').forEach(b => {
         b.addEventListener('click', (e) => {
@@ -433,7 +481,7 @@ const UI = {
            } else {
                this.notify(res.reason, "error");
            }
-           this.updateAll(); // Refresh to remove player from display
+           this.updateAll();
         });
     });
   },

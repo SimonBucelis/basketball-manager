@@ -174,7 +174,10 @@ const LeagueManager = {
 
     const youth = [];
     for (let i = 0; i < CONFIG.YOUTH_COUNT; i++) {
-      youth.push(PlayerManager.generatePlayer(teamId, team.prestige, true));
+      const youthPlayer = PlayerManager.generatePlayer(teamId, team.prestige, true);
+      // Ensure youth are 18-22 years old
+      youthPlayer.age = Utils.randInt(18, 22);
+      youth.push(youthPlayer);
     }
     league.didYouthThisOffseason = true;
     return youth;
@@ -259,9 +262,9 @@ const LeagueManager = {
     const poolIdx = league.freeAgentPool.findIndex(fa => fa.id === playerId);
     if (poolIdx !== -1) league.freeAgentPool.splice(poolIdx, 1);
     
-    // Sign player
+    // Sign player - minimum 2 year contract
     p.teamId = userTeam.id;
-    p.contractYears = Utils.randInt(1, 3);
+    p.contractYears = 2;
     p.status = "reserve";
     p.signed = true;
     p.inMarket = false;
