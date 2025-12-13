@@ -348,8 +348,8 @@ const UI = {
     document.getElementById('modalTitle').textContent = "Renew Contract";
     document.getElementById('modalText').innerHTML = `
       <p style="margin-bottom:15px;">Choose contract length:</p>
-      <button id="offer1yr" class="btn btn-outline" style="margin:5px;">1 Year (40% accept)</button>
-      <button id="offer2yr" class="btn btn-outline" style="margin:5px;">2 Years (20% accept)</button>
+      <button id="offer1yr" class="btn btn-outline" style="margin:5px;">1 Year (60% accept)</button>
+      <button id="offer2yr" class="btn btn-outline" style="margin:5px;">2 Years (35% accept)</button>
     `;
     document.getElementById('modalConfirm').style.display = 'none';
     document.getElementById('modalCancel').textContent = 'Cancel';

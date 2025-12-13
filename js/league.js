@@ -131,16 +131,41 @@ const LeagueManager = {
     }
   },
 
-  generateFreeAgents(league) {
-    // Generate fresh free agents pool
-    league.freeAgents = [];
-    const poolSize = CONFIG.FREE_AGENT_DISPLAY * 3; // 24 total in pool
-    
-    for (let i = 0; i < poolSize; i++) {
+  initializeFreeAgentPool(league) {
+    // Create database of free agents (pool of 24)
+    league.freeAgentPool = [];
+    for (let i = 0; i < CONFIG.FREE_AGENT_POOL_SIZE; i++) {
       const randomPrestige = Utils.randInt(1, 4);
       const fa = PlayerManager.generatePlayer(null, randomPrestige, false);
-      league.freeAgents.push(fa);
+      fa.inMarket = false; // Track if currently displayed
+      league.freeAgentPool.push(fa);
     }
+  },
+
+  generateFreeAgents(league) {
+    // Initialize pool if it doesn't exist
+    if (!league.freeAgentPool || league.freeAgentPool.length === 0) {
+      this.initializeFreeAgentPool(league);
+    }
+    
+    // Display 8 random agents from pool that aren't signed/declined
+    const available = league.freeAgentPool.filter(p => !p.signed && !p.declined);
+    const shuffled = Utils.shuffle([...available]);
+    const toDisplay = shuffled.slice(0, CONFIG.FREE_AGENT_DISPLAY);
+    
+    // Mark these as in market
+    toDisplay.forEach(p => p.inMarket = true);
+    league.freeAgents = toDisplay;
+  },
+
+  refreshFreeAgentPool(league) {
+    // Called at start of new offseason - creates completely fresh pool
+    this.initializeFreeAgentPool(league);
+    
+    // Display first 8 from fresh pool
+    const toDisplay = league.freeAgentPool.slice(0, CONFIG.FREE_AGENT_DISPLAY);
+    toDisplay.forEach(p => p.inMarket = true);
+    league.freeAgents = toDisplay;
   },
 
   doYouthIntake(league, teamId) {
@@ -159,7 +184,9 @@ const LeagueManager = {
     const team = league.teams.find(t => t.id === teamId);
     if (!team) return { success: false, reason: "Team not found." };
 
-    if (league.phase !== CONFIG.PHASES.OFFSEASON) return { success: false, reason: "Can only release players in the Off-season." };
+    if (league.phase !== CONFIG.PHASES.OFFSEASON) {
+      return { success: false, reason: "Can only release players in the Off-season." };
+    }
     
     const idx = team.players.findIndex(p => p.id === playerId);
     if (idx === -1) return { success: false, reason: "Player not found on your team." };
@@ -167,7 +194,14 @@ const LeagueManager = {
     const p = team.players.splice(idx, 1)[0];
     p.teamId = null;
     p.contractYears = 0;
-    league.freeAgents.push(p);
+    p.signed = false;
+    p.declined = false;
+    p.inMarket = false;
+    
+    // Add to pool
+    if (!league.freeAgentPool) league.freeAgentPool = [];
+    league.freeAgentPool.push(p);
+    
     return { success: true, player: p };
   },
 
@@ -200,23 +234,37 @@ const LeagueManager = {
       const comp2Score = comp2.prestige + (comp2.prestige * comp2Luck);
       
       if (userScore < comp1Score || userScore < comp2Score) {
+        // Mark as declined and remove from display only
+        p.declined = true;
+        p.inMarket = false;
+        const idx = league.freeAgents.findIndex(fa => fa.id === playerId);
+        if (idx !== -1) league.freeAgents.splice(idx, 1);
         return { success: false, reason: "Another team outbid you!" };
       }
     } else {
-      // Lower potential (1-2 stars) = 70% accept
+      // Lower potential (1-2 stars) = 70% accept, 30% decline
       if (Math.random() > 0.7) {
-        return { success: false, reason: "Player declined." };
+        p.declined = true;
+        p.inMarket = false;
+        const idx = league.freeAgents.findIndex(fa => fa.id === playerId);
+        if (idx !== -1) league.freeAgents.splice(idx, 1);
+        return { success: false, reason: "Player declined your offer." };
       }
     }
     
-    // Remove from free agents
+    // Success - remove from display and pool
     const faIdx = league.freeAgents.findIndex(fa => fa.id === playerId);
-    league.freeAgents.splice(faIdx, 1);
+    if (faIdx !== -1) league.freeAgents.splice(faIdx, 1);
+    
+    const poolIdx = league.freeAgentPool.findIndex(fa => fa.id === playerId);
+    if (poolIdx !== -1) league.freeAgentPool.splice(poolIdx, 1);
     
     // Sign player
     p.teamId = userTeam.id;
     p.contractYears = Utils.randInt(1, 3);
     p.status = "reserve";
+    p.signed = true;
+    p.inMarket = false;
     userTeam.players.push(p);
     
     return { success: true, player: p, team: userTeam };
@@ -224,6 +272,8 @@ const LeagueManager = {
 
   extendContract(league, playerId, years) {
     const userTeam = league.teams.find(t => t.id === league.userTeamId);
+    if (!userTeam) return { success: false, reason: "Team not found." };
+    
     const p = userTeam.players.find(pl => pl.id === playerId);
     
     if (!p) return { success: false, reason: "Player not found." };
@@ -231,14 +281,17 @@ const LeagueManager = {
 
     p.extendAttempted = true;
     
-    // Calculate acceptance chance based on years offered
+    // 1 year = 60% accept (40% deny)
+    // 2 years = 35% accept (65% deny)
     let acceptChance = 0;
-    if (years === 1) acceptChance = 0.4;  // 40%
-    else if (years === 2) acceptChance = 0.2;  // 20%
+    if (years === 1) acceptChance = 0.6;
+    else if (years === 2) acceptChance = 0.35;
     
     // Age penalties
     if (p.age > 30) acceptChance -= 0.1;
     if (p.age > 34) acceptChance -= 0.2;
+    
+    acceptChance = Math.max(0, acceptChance);
     
     const roll = Math.random();
     
@@ -251,16 +304,51 @@ const LeagueManager = {
   },
 
   autoFillAITeams(league) {
+    // First, AI teams release expired contracts to pool
     for (const team of league.teams) {
       if (team.id === league.userTeamId) continue;
       
-      team.players = team.players.filter(p => !p.retired);
+      const remaining = [];
+      for (const p of team.players) {
+        if (p.retired) continue;
+        
+        if (p.contractYears <= 0) {
+          // Add to free agent pool
+          p.teamId = null;
+          p.status = "reserve";
+          p.signed = false;
+          p.declined = false;
+          p.inMarket = false;
+          if (!league.freeAgentPool) league.freeAgentPool = [];
+          league.freeAgentPool.push(p);
+        } else {
+          remaining.push(p);
+        }
+      }
+      team.players = remaining;
+    }
+    
+    // Then fill rosters from pool
+    for (const team of league.teams) {
+      if (team.id === league.userTeamId) continue;
+      
       while (team.players.length < CONFIG.ROSTER_SIZE) {
-        if (league.freeAgents.length === 0) break;
-        const idx = Utils.randInt(0, league.freeAgents.length - 1);
-        const p = league.freeAgents.splice(idx, 1)[0];
+        if (!league.freeAgentPool || league.freeAgentPool.length === 0) break;
+        
+        const available = league.freeAgentPool.filter(p => !p.signed && !p.declined);
+        if (available.length === 0) break;
+        
+        const idx = Utils.randInt(0, available.length - 1);
+        const p = available[idx];
+        
+        // Remove from pool
+        const poolIdx = league.freeAgentPool.findIndex(fa => fa.id === p.id);
+        if (poolIdx !== -1) league.freeAgentPool.splice(poolIdx, 1);
+        
         p.teamId = team.id;
         p.contractYears = Utils.randInt(1, 3);
+        p.signed = true;
+        p.inMarket = false;
         team.players.push(p);
       }
       this.autoSetLineup(team);
