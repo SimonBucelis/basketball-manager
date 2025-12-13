@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LT Basketball Manager</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Modal Overlay -->
+  <div id="modalOverlay" class="modal-overlay">
+    <div class="modal-content">
+      <h3 id="modalTitle">Confirm</h3>
+      <p id="modalText">Are you sure?</p>
+      <div class="modal-actions">
+        <button id="modalConfirm" class="btn btn-primary">Confirm</button>
+        <button id="modalCancel" class="btn btn-outline">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="team-card-mini" id="sidebarTeamCard">
+        <h2 id="sidebarTeamName">Select Team</h2>
+        <div class="team-meta">
+          <span id="sidebarPrestige">★ 0.0</span>
+          <span id="sidebarPhase">Pre-season</span>
+        </div>
+        <span class="team-status-badge" id="sidebarRoster">👥 0/0</span>
+      </div>
+
+      <nav class="main-nav">
+        <button class="nav-item active" data-view="dashboard">📊 Dashboard</button>
+        <button class="nav-item" data-view="squad">👥 Squad</button>
+        <button class="nav-item" data-view="playoffs">⚔️ Playoffs</button>
+        <button class="nav-item" data-view="recruitment">🤝 Recruitment</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="btnSave" class="btn btn-sm btn-outline full-width">Save</button>
+        <button id="btnLoad" class="btn btn-sm btn-outline full-width">Load</button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      
+      <!-- Intro / Team Select Panel -->
+      <div id="introPanel" class="card" style="text-align:center; max-width:600px; margin:50px auto; display:block;">
+        <h1>Basketball Manager 2025</h1>
+        <p>Select your team to begin your career.</p>
+        <div style="margin:30px 0;">
+          <select id="teamPickSelect" style="padding:10px; font-size:1.1rem; width:100%; max-width:300px; background:#333; color:white; border:1px solid #555; border-radius:4px;"></select>
+        </div>
+        <button id="btnStartGame" class="btn btn-primary" style="padding:15px 40px; font-size:1.1rem;">Start Career</button>
+      </div>
+
+      <!-- Main Game Panels (Initially Hidden) -->
+      <div id="dashboardPanel" style="display:none;">
+        
+        <!-- Dashboard View -->
+        <div id="view-dashboard" class="view active">
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h2 id="dashSeason" style="margin:0;">Year 2025</h2>
+              <div style="display:flex; gap:10px;">
+                <button id="btnSimSeason" class="btn btn-primary">▶ Sim Regular Season</button>
+                <button id="btnStartNextSeason" class="btn btn-secondary" disabled>Next Season ⏭</button>
+              </div>
+            </div>
+          </div>
+          <div id="dashboardEvents"></div>
+        </div>
+
+        <!-- Squad View -->
+        <div id="view-squad" class="view">
+          <div class="card">
+             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+               <h2>Team Roster</h2>
+               <button id="btnClaimYouth" class="btn btn-sm btn-outline">Youth Intake</button>
+             </div>
+             <div class="table-responsive">
+               <table class="data-table">
+                 <thead>
+                   <tr>
+                     <th>Name</th><th>Age</th><th>OVR</th><th>Role</th><th>Contract</th><th>Status</th><th>Actions</th>
+                   </tr>
+                 </thead>
+                 <tbody id="squadTableBody"></tbody>
+               </table>
+             </div>
+          </div>
+        </div>
+
+        <!-- Playoffs View -->
+        <div id="view-playoffs" class="view">
+            <div class="card">
+              <h2>Playoff Bracket</h2>
+              <div id="bracketContainer" class="bracket-container"></div>
+            </div>
+        </div>
+
+        <!-- Recruitment View -->
+        <div id="view-recruitment" class="view">
+            <div class="card">
+              <h2>Free Agent Market</h2>
+              <p style="color:#888; font-size:0.9rem;">Sign players to strengthen your squad.</p>
+              <div id="marketContainer" class="card-grid mt-4"></div>
+            </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/models.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/match-engine.js"></script>
+  <script src="js/league.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
