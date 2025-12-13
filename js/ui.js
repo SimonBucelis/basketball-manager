@@ -99,16 +99,22 @@ const UI = {
             if(!window.league) return;
             const userTeam = window.league.teams.find(t => t.id === window.league.userTeamId);
             if (userTeam.players.length > CONFIG.ROSTER_SIZE) {
-                this.notify("Roster too large", "error");
+                this.notify("Roster too large - release players first", "error");
                 return;
             }
+            if (userTeam.players.length < CONFIG.MIN_ROSTER_SIZE) {
+                this.notify(`Need at least ${CONFIG.MIN_ROSTER_SIZE} players`, "error");
+                return;
+            }
+            
             PlayerManager.progressPlayers(window.league);
             PlayerManager.expireContracts(window.league);
             LeagueManager.autoFillAITeams(window.league);
+            LeagueManager.refreshFreeAgentPool(window.league);
             window.league.didYouthThisOffseason = false;
             window.league.phase = CONFIG.PHASES.REGULAR;
             this.updateAll();
-            this.notify("New Season!", "success");
+            this.notify("New Season Started!", "success");
         });
     }
 
@@ -119,7 +125,7 @@ const UI = {
         newBtn.addEventListener('click', () => {
             if(!window.league) return;
             Utils.saveToLocalStorage(CONFIG.SAVE_KEY, window.league);
-            this.notify("Saved", "success");
+            this.notify("Game Saved", "success");
         });
     }
 
@@ -134,9 +140,9 @@ const UI = {
                 document.getElementById('introPanel').style.display = 'none';
                 document.getElementById('dashboardPanel').style.display = 'block';
                 this.updateAll();
-                this.notify("Loaded", "success");
+                this.notify("Game Loaded", "success");
             } else {
-                this.notify("No save", "error");
+                this.notify("No save found", "error");
             }
         });
     }
@@ -159,8 +165,13 @@ const UI = {
             const team = window.league.teams.find(t => t.id === window.league.userTeamId);
             if (!team) return;
             
+            if(window.league.phase !== CONFIG.PHASES.OFFSEASON) {
+                this.notify("Only available in offseason.", "error");
+                return;
+            }
+            
             if(window.league.didYouthThisOffseason) {
-                this.notify("Already claimed youth.", "error");
+                this.notify("Already claimed youth this offseason.", "error");
                 return;
             }
             if(team.players.length + CONFIG.YOUTH_COUNT > CONFIG.ROSTER_SIZE) {
@@ -169,7 +180,7 @@ const UI = {
             }
             
             document.getElementById('modalTitle').textContent = "Youth Intake";
-            document.getElementById('modalText').textContent = "Sign 3 youth players (2yr contracts)?";
+            document.getElementById('modalText').textContent = `Sign ${CONFIG.YOUTH_COUNT} youth players (${CONFIG.YOUTH_CONTRACT_YEARS}yr contracts)?`;
             document.getElementById('modalConfirm').style.display = 'inline-block';
             document.getElementById('modalOverlay').style.display = 'flex';
             
@@ -177,7 +188,7 @@ const UI = {
                const youth = LeagueManager.doYouthIntake(window.league, window.league.userTeamId);
                team.players.push(...youth);
                this.updateAll();
-               this.notify("Youth Signed", "success");
+               this.notify(`${CONFIG.YOUTH_COUNT} Youth Players Signed!`, "success");
                document.getElementById('modalOverlay').style.display = 'none';
             };
         });
@@ -337,8 +348,8 @@ const UI = {
     document.getElementById('modalTitle').textContent = "Renew Contract";
     document.getElementById('modalText').innerHTML = `
       <p style="margin-bottom:15px;">Choose contract length:</p>
-      <button id="offer1yr" class="btn btn-outline" style="margin:5px;">1 Year (40%)</button>
-      <button id="offer2yr" class="btn btn-outline" style="margin:5px;">2 Years (20%)</button>
+      <button id="offer1yr" class="btn btn-outline" style="margin:5px;">1 Year (40% accept)</button>
+      <button id="offer2yr" class="btn btn-outline" style="margin:5px;">2 Years (20% accept)</button>
     `;
     document.getElementById('modalConfirm').style.display = 'none';
     document.getElementById('modalCancel').textContent = 'Cancel';
@@ -348,9 +359,9 @@ const UI = {
         const res = LeagueManager.extendContract(window.league, Number(playerId), 1);
         if(res.success) {
             if(res.extended) {
-                this.notify(`Accepted! +1 year`, "success");
+                this.notify(`Contract Extended +1 year!`, "success");
             } else {
-                this.notify("Player declined.", "error");
+                this.notify("Player declined the offer.", "error");
             }
             this.updateAll();
         }
@@ -361,9 +372,9 @@ const UI = {
         const res = LeagueManager.extendContract(window.league, Number(playerId), 2);
         if(res.success) {
             if(res.extended) {
-                this.notify(`Accepted! +2 years`, "success");
+                this.notify(`Contract Extended +2 years!`, "success");
             } else {
-                this.notify("Player declined.", "error");
+                this.notify("Player declined the offer.", "error");
             }
             this.updateAll();
         }
@@ -390,24 +401,26 @@ const UI = {
   renderRecruitment() {
     const container = document.getElementById('marketContainer');
     container.innerHTML = '';
+    
     if(window.league.phase !== CONFIG.PHASES.OFFSEASON) {
-        container.innerHTML = '<p>Market opens in the Off-season.</p>';
+        container.innerHTML = '<p style="color:#888;">Free agent market opens in the offseason.</p>';
         return;
     }
 
-    const agents = window.league.freeAgents.slice(0, CONFIG.FREE_AGENT_DISPLAY);
+    const agents = window.league.freeAgents;
     if (agents.length === 0) {
-        container.innerHTML = '<p>No free agents available.</p>';
+        container.innerHTML = '<p style="color:#888;">No free agents currently available. The market will refresh next offseason.</p>';
         return;
     }
 
     agents.forEach(p => {
         const card = document.createElement('div');
         card.className = 'player-card';
-        card.innerHTML = `<h4>${p.name}</h4>
+        card.innerHTML = `
+           <h4>${p.name}</h4>
            <div>Age: ${p.age}</div>
            <div class="stars">${"★".repeat(p.potentialStars)}</div>
-           <div style="font-size:0.85rem; color:#888;">${p.role}</div>
+           <div style="font-size:0.85rem; color:#888; margin-top:5px;">${p.role}</div>
            <button class="btn btn-sm btn-outline btn-sign" data-id="${p.id}" style="margin-top:10px;">Sign</button>`;
         container.appendChild(card);
     });
@@ -417,10 +430,10 @@ const UI = {
            const res = LeagueManager.signFreeAgentToBestTeam(window.league, Number(e.target.dataset.id), window.league.userTeamId);
            if(res.success) {
                this.notify("Player Signed!", "success");
-               this.updateAll();
            } else {
                this.notify(res.reason, "error");
            }
+           this.updateAll(); // Refresh to remove player from display
         });
     });
   },

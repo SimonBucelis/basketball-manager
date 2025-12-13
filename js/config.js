@@ -4,9 +4,10 @@ const CONFIG = {
   MIN_ROSTER_SIZE: 8,
   MAX_STARTERS: 5,
   YOUTH_COUNT: 3,
-  YOUTH_CONTRACT_YEARS: 2,  // ADD THIS LINE - THIS WAS MISSING!
+  YOUTH_CONTRACT_YEARS: 2,
+  FREE_AGENT_POOL_SIZE: 24,
   FREE_AGENT_DISPLAY: 8,
-  SAVE_KEY: 'ltbball_manager_v3',
+  SAVE_KEY: 'ltbball_manager_v5',
   
   // Game Roles
   ROLES: ['Defender', 'Sharpshooter', 'Playmaker'],
