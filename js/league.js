@@ -14,6 +14,13 @@ const LeagueManager = {
 
     for (const team of league.teams) {
       team.players = PlayerManager.generateRoster(team.id, Math.round(team.prestige), rosterSize);
+      // Ensure all players have wages calculated
+      team.players.forEach(p => {
+        if (!p.wage || p.wage === 0) {
+          p.wage = p.calculateWage(team.prestige);
+        }
+        p.acquisitionType = 'initial'; // Ensure acquisition type is set
+      });
       this.autoSetLineup(team);
       team.updateBudgets(); // Initialize budgets
     }
@@ -75,7 +82,7 @@ const LeagueManager = {
     leagueState.season++;
     leagueState.year++;
     return true;
-    },
+  },
 
   runPlayoffs(leagueState) {
     const sorted = [...leagueState.teams].sort((a,b) => b.seasonStats.wins - a.seasonStats.wins || b.seasonStats.pointsFor - a.seasonStats.pointsFor);
@@ -156,6 +163,7 @@ const LeagueManager = {
       const randomPrestige = Utils.randInt(1, 4);
       const fa = PlayerManager.generatePlayer(null, randomPrestige, false);
       fa.inMarket = false;
+      fa.acquisitionType = 'free'; // Set acquisition type for free agents
       league.freeAgentPool.push(fa);
     }
   },
@@ -209,19 +217,23 @@ const LeagueManager = {
 
     const p = team.players[idx];
     
-    // Calculate release cost
+    // Calculate release cost - only for transfer or renewed players
     let releaseCost = 0;
     if (p.acquisitionType === 'transfer' || p.acquisitionType === 'renewed') {
       releaseCost = p.contractYears * p.wage;
     }
+    // Youth, initial, and free players have no release cost
     
-    if (team.transferBudget < releaseCost) {
+    // Check budget only if there's a cost
+    if (releaseCost > 0 && team.transferBudget < releaseCost) {
       return { success: false, reason: `Not enough budget. Release cost: ${releaseCost.toLocaleString()}` };
     }
     
-    // Deduct cost
-    team.cash -= releaseCost;
-    team.updateBudgets();
+    // Deduct cost if any
+    if (releaseCost > 0) {
+      team.cash -= releaseCost;
+      team.updateBudgets();
+    }
     
     // Remove player
     team.players.splice(idx, 1);
@@ -230,6 +242,7 @@ const LeagueManager = {
     p.signed = false;
     p.declined = false;
     p.inMarket = false;
+    p.acquisitionType = 'free'; // Change to free agent type
     
     if (!league.freeAgentPool) league.freeAgentPool = [];
     league.freeAgentPool.push(p);
@@ -248,13 +261,11 @@ const LeagueManager = {
         return { success: false, reason: `Roster full (${CONFIG.ROSTER_SIZE} limit).` };
     }
     
-    // Free agents don't cost transfer fee, just wages
+    // Free agents don't cost transfer fee, just wages (which start next season)
     const wage = p.calculateWage(userTeam.prestige);
     
-    if (userTeam.transferBudget < 0) {
-      return { success: false, reason: "Negative transfer budget!" };
-    }
-
+    // No budget check for free agents - wages are paid during next season
+    
     // High potential players (3+ stars) = competitive bidding
     if (p.potentialStars >= 3) {
       const aiTeams = league.teams.filter(t => t.id !== userTeamId);
@@ -298,12 +309,12 @@ const LeagueManager = {
     // Sign player - 1 year contract for free agent
     p.teamId = userTeamId;
     p.contractYears = 1;
-    p.wage = wage;
+    p.wage = wage; // Set wage (starts next season)
     p.acquisitionType = 'free';
     p.status = 'reserve';
     userTeam.players.push(p);
     
-    // Update budgets to reflect new wages
+    // Update budgets (wage will be calculated for next season)
     userTeam.updateBudgets();
     
     return { success: true, player: p, team: userTeam };
@@ -320,13 +331,16 @@ const LeagueManager = {
 
     p.extendAttempted = true;
     
-    // Calculate new wage
+    // Calculate new wage (for next season)
     const newWage = p.calculateWage(userTeam.prestige);
-    const totalCost = newWage * years;
     
-    // Check if can afford
-    if (userTeam.transferBudget < totalCost) {
-      return { success: false, reason: `Not enough budget. Cost: ${totalCost.toLocaleString()}` };
+    // NO upfront cost for renewals - wages start next season
+    // Just check if we can afford the future wages by checking transfer budget
+    const futureWageCost = newWage * years;
+    
+    // Check if can afford future wages (using transfer budget as proxy)
+    if (userTeam.transferBudget < futureWageCost) {
+      return { success: false, reason: `Not enough budget for future wages. Future cost: ${futureWageCost.toLocaleString()}` };
     }
 
     let acceptChance = 0;
@@ -342,15 +356,12 @@ const LeagueManager = {
     const roll = Math.random();
     
     if (roll < acceptChance) {
-        // Deduct cost ONCE
-        userTeam.cash -= totalCost;
-        userTeam.updateBudgets();
-        
-        // Add years (no tick during offseason)
+        // NO deduction now - wages start next season
+        // Just update the contract and wage
         p.contractYears += years;   
-        p.wage = newWage;
+        p.wage = newWage; // New wage applies next season
         p.acquisitionType = 'renewed';
-        return { success: true, extended: true, years: years, cost: totalCost };
+        return { success: true, extended: true, years: years, cost: 0 }; // Cost is 0 now
     } else {
         return { success: true, extended: false };
     }
@@ -371,6 +382,7 @@ const LeagueManager = {
           p.signed = false;
           p.declined = false;
           p.inMarket = false;
+          p.acquisitionType = 'free'; // Set to free agent
           if (!league.freeAgentPool) league.freeAgentPool = [];
           league.freeAgentPool.push(p);
         } else {
@@ -401,6 +413,7 @@ const LeagueManager = {
         p.signed = true;
         p.inMarket = false;
         p.wage = p.calculateWage(team.prestige);
+        p.acquisitionType = 'free'; // AI signing free agents
         team.players.push(p);
       }
       this.autoSetLineup(team);
@@ -452,19 +465,7 @@ const LeagueManager = {
     league.transferMarket = Utils.shuffle(league.transferMarket);
   },
 
-  buyTransfer(playerId, years) {
-    const res = LeagueManager.buyTransferPlayer(window.league, window.league.userTeamId, Number(playerId), years);
-    
-    if (res.success) {
-        this.notify(`Signed ${res.player.name} for $${res.cost.toLocaleString()}`, "success");
-        this.updateAll();
-    } else {
-        this.notify(res.reason, "error");
-    }
-    },
-    
- // In league.js, update buyTransferPlayer method:
-buyTransferPlayer(league, userTeamId, playerId, years) {
+  buyTransferPlayer(league, userTeamId, playerId, years) {
     const userTeam = league.teams.find(t => t.id === userTeamId);
     const marketItem = league.transferMarket.find(m => m.player.id === playerId);
     
@@ -474,6 +475,7 @@ buyTransferPlayer(league, userTeamId, playerId, years) {
     const wage = p.calculateWage(userTeam.prestige);
     const transferFee = marketItem.price;
     
+    // Check transfer budget for the fee ONLY (not wages)
     if (userTeam.transferBudget < transferFee) {
         return { success: false, reason: `Cannot afford transfer fee: ${transferFee.toLocaleString()}` };
     }
@@ -482,7 +484,8 @@ buyTransferPlayer(league, userTeamId, playerId, years) {
     let acceptChance = years === 1 ? 0.90 : 0.75;
     
     // Add prestige bonus/penalty
-    const prestigeDiff = userTeam.prestige - league.teams.find(t => t.id === marketItem.fromTeamId).prestige;
+    const fromTeam = league.teams.find(t => t.id === marketItem.fromTeamId);
+    const prestigeDiff = fromTeam ? userTeam.prestige - fromTeam.prestige : 0;
     if (prestigeDiff > 1) acceptChance += 0.1;
     if (prestigeDiff < -1) acceptChance -= 0.1;
     
@@ -494,24 +497,24 @@ buyTransferPlayer(league, userTeamId, playerId, years) {
     
     // Roll for acceptance
     if (Math.random() > acceptChance) {
-        return { success: false, reason: `Player declined ${years}-year contract offer (${Math.round(acceptChance * 100)}% chance)` };
+      return { success: false, reason: `Player declined ${years}-year contract offer (${Math.round(acceptChance * 100)}% chance)` };
     }
     
-    // Execute Transfer
+    // Execute Transfer - deduct ONLY transfer fee
     userTeam.cash -= transferFee;
     
     // Remove from old team
     const oldTeam = league.teams.find(t => t.id === marketItem.fromTeamId);
     if (oldTeam) {
-        oldTeam.players = oldTeam.players.filter(pl => pl.id !== p.id);
-        oldTeam.cash += transferFee; // They get the money
-        oldTeam.updateBudgets();
+      oldTeam.players = oldTeam.players.filter(pl => pl.id !== p.id);
+      oldTeam.cash += transferFee; // They get the money
+      oldTeam.updateBudgets();
     }
     
     // Add to user team
     p.teamId = userTeam.id;
     p.contractYears = years;
-    p.wage = wage;
+    p.wage = wage; // Set wage (starts next season)
     p.acquisitionType = 'transfer';
     p.status = 'reserve';
     userTeam.players.push(p);
@@ -522,4 +525,5 @@ buyTransferPlayer(league, userTeamId, playerId, years) {
     userTeam.updateBudgets();
     
     return { success: true, player: p, cost: transferFee };
-}};
+  }
+};
