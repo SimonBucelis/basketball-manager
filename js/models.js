@@ -13,6 +13,14 @@ class Player {
     this.retired = data.retired || false;
     this.status = data.status || 'reserve';
     this.extendAttempted = data.extendAttempted || false;
+    this.wage = data.wage || 0;
+    this.acquisitionType = data.acquisitionType || 'youth'; // 'youth', 'free', 'transfer', 'renewed'
+    this.transferFee = data.transferFee || 0;
+  }
+  
+  calculateWage(teamPrestige) {
+    // Wage formula: round((Age^2) * (prestige*0.5) * OVR * stars)
+    return Math.round((this.age * (this.age/2)) * (teamPrestige*0.2) * this.rating * this.potentialStars);
   }
 }
 
@@ -33,6 +41,13 @@ class Team {
     this.yearFounded = data.yearFounded || new Date().getFullYear();
     this.playoffSeriesWins = data.playoffSeriesWins || 0;
     this.playoffRoundReached = data.playoffRoundReached || "Did not qualify";
+    
+    // Finance properties - use team-specific starting cash
+    this.startingCash = data.startingCash || 100000; // Fallback if not defined
+    this.cash = data.cash !== undefined ? data.cash : this.startingCash;
+    this.wageBudget = data.wageBudget || 0;
+    this.transferBudget = data.transferBudget || 0;
+    this.financeHistory = data.financeHistory || [];
   }
 
   resetSeasonStats() {
@@ -45,6 +60,28 @@ class Team {
     };
     this.playoffSeriesWins = 0;
     this.playoffRoundReached = "Did not qualify";
+  }
+  
+  getProfit() {
+    return this.cash - this.startingCash;
+  }
+  
+  calculateRequiredWages() {
+    return this.players.reduce((sum, p) => sum + (p.wage || 0), 0);
+  }
+  
+  updateBudgets() {
+    // Called when entering offseason
+    this.wageBudget = this.calculateRequiredWages();
+    this.transferBudget = this.cash - this.wageBudget;
+  }
+  
+  recordFinanceHistory(year) {
+    this.financeHistory.push({
+      year: year,
+      cash: this.cash,
+      profit: this.getProfit()
+    });
   }
 }
 
